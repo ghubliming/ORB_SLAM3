@@ -369,12 +369,12 @@ To break this, make `MergePrevious()` entirely data-driven: the caller is respon
 
 ### 7.1 Extra Coupling Risks in the BA Path (important for safe extraction)
 
-The items above describe compile-time coupling. There are also **runtime coupling risks** in the optimisation path that should be addressed in the same extraction effort:
+The items above describe compile-time coupling. There are also **runtime coupling risks** in the optimization path that should be addressed in the same extraction effort:
 
 | # | Where | Runtime risk | Severity | Recommended fix |
 |---|---|---|---|---|
 | 8 | `G2oTypes.cc` (`EdgeInertial`) | Edge stores a live `IMU::Preintegrated*` and may read it while map/keyframe operations modify or replace the object | Critical | Snapshot immutable data at edge construction (`PreintegratedData`) instead of retaining pointer |
-| 9 | `Optimizer.cc` write-back path | BA can update `KeyFrame::mImuBias` while `Preintegrated` still carries old linearisation bias until reintegration | Critical | Enforce bias update + reintegration ordering under a consistent lock/scheduling policy |
+| 9 | `Optimizer.cc` write-back path | BA can update `KeyFrame::mImuBias` while `Preintegrated` still carries old linearization bias until reintegration | Critical | Enforce bias update + reintegration ordering under a consistent lock/scheduling policy |
 | 10 | `G2oTypes.cc` (`EdgeInertialGS`) | Gravity/scale residual uses `dT`; omitting `dT` in exported snapshot silently breaks initialisation | High | Keep `dT` in `PreintegratedData` contract |
 
 ---
