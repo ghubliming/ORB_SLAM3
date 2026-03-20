@@ -367,6 +367,16 @@ To break this, make `MergePrevious()` entirely data-driven: the caller is respon
 | 6 | `ImuTypes.cc` compiled as part of the monolithic `ORB_SLAM3` library | `CMakeLists.txt` | Medium | Extract into `imu_preintegration` sub-library |
 | 7 | `SerializationUtils.h` lives in the top-level `include/` folder | `include/SerializationUtils.h` | Low | Copy/symlink into `imu_preintegration/include/` |
 
+### 7.1 Extra Coupling Risks in the BA Path (important for safe extraction)
+
+The items above describe compile-time coupling. There are also **runtime coupling risks** in the optimisation path that should be addressed in the same extraction effort:
+
+| # | Where | Runtime risk | Severity | Recommended fix |
+|---|---|---|---|---|
+| 8 | `G2oTypes.cc` (`EdgeInertial`) | Edge stores a live `IMU::Preintegrated*` and may read it while map/keyframe operations modify or replace the object | Critical | Snapshot immutable data at edge construction (`PreintegratedData`) instead of retaining pointer |
+| 9 | `Optimizer.cc` write-back path | BA can update `KeyFrame::mImuBias` while `Preintegrated` still carries old linearisation bias until reintegration | Critical | Enforce bias update + reintegration ordering under a consistent lock/scheduling policy |
+| 10 | `G2oTypes.cc` (`EdgeInertialGS`) | Gravity/scale residual uses `dT`; omitting `dT` in exported snapshot silently breaks initialisation | High | Keep `dT` in `PreintegratedData` contract |
+
 ---
 
 ## 8. Resulting Architecture After Decomposition
@@ -397,6 +407,23 @@ To break this, make `MergePrevious()` entirely data-driven: the caller is respon
 ```
 
 The key property of this architecture is that `imu_preintegration` can be compiled, unit-tested, and versioned entirely independently of ORB-SLAM3. The only contract between the two layers is the `ImuTypes.h` API and the `PreintegratedData` accessor struct.
+
+### 8.1 Contract Note for `PreintegratedData`
+
+To support both `EdgeInertial` and `EdgeInertialGS`, the snapshot struct must include:
+
+```cpp
+struct PreintegratedData {
+    float dT; // required by gravity/scale terms
+    Eigen::Matrix3f dR;
+    Eigen::Vector3f dV, dP;
+    Eigen::Matrix3f JRg, JVg, JVa, JPg, JPa;
+    Bias b;
+    Eigen::Matrix<float,15,15> Info;
+};
+```
+
+When using this contract, `EdgeInertial` should store `PreintegratedData` **by value** in its constructor and never dereference a live `IMU::Preintegrated*` during iterative solve.
 
 ---
 
